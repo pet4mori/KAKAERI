@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import hmac
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -39,6 +40,57 @@ def load_openai_api_key():
             return value.strip().strip('"').strip("'")
 
     return None
+
+
+def load_app_password():
+    password = os.getenv("APP_PASSWORD")
+    if password:
+        return password
+
+    try:
+        password = st.secrets.get("APP_PASSWORD")
+    except Exception:
+        password = None
+
+    if password:
+        return str(password)
+
+    if not ENV_PATH.exists():
+        return None
+
+    for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        if key.strip() == "APP_PASSWORD":
+            return value.strip().strip('"').strip("'")
+
+    return None
+
+
+def require_password():
+    app_password = load_app_password()
+    if not app_password:
+        st.error("APP_PASSWORD が設定されていません。")
+        st.info("Streamlit Secrets または .env に APP_PASSWORD を設定してください。")
+        st.stop()
+
+    if st.session_state.get("authenticated"):
+        return
+
+    st.title("KAKARI")
+    password = st.text_input("パスワード", type="password")
+
+    if st.button("ログイン"):
+        if hmac.compare_digest(password, app_password):
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("パスワードが違います。")
+
+    st.stop()
 
 
 def now_text():
@@ -399,6 +451,7 @@ def to_csv_bytes(dataframe):
 
 
 st.set_page_config(page_title="KAKARI", page_icon="⏱", layout="wide")
+require_password()
 init_db()
 
 st.title("KAKARI")
